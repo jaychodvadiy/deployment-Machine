@@ -1,58 +1,44 @@
 const express = require("express");
+require("dotenv").config();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
-const User = require("../models/User");
 const mongoose = require("mongoose");
-
-const app = express();
+const User = require("../models/User");
 const router = express.Router();
+const app = express(); // Initialize the app
 
-// Middleware to parse JSON bodies
-app.use(express.json());
+app.use(express.json()); // Middleware to parse JSON request body
+app.use(cors()); // Enable CORS
 
-// Set up CORS for frontend access
-app.use(
-  cors({
-    origin: "http://localhost:3000", // Your frontend URL
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  })
-);
+// MongoDB Connection with Retry Mechanism
+const connectWithRetry = () => {
+  console.log("Attempting to connect to MongoDB..."); // Debugging log
 
-mongoose
-  .connect("mongodb://localhost:27017/yourDatabaseName", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    connectTimeoutMS: 60000,
-    serverSelectionTimeoutMS: 60000,
-  })
-  .then(() => {
-    console.log("✅ MongoDB connected");
-    return mongoose
-      .model("User", new mongoose.Schema({ email: String }))
-      .findOne({ email: "test@example.com" });
-  })
-  .then((user) => {
-    console.log("User found:", user);
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB connection or query error:", err);
-  });
+  mongoose
+    .connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000, // 5 seconds timeout
+      socketTimeoutMS: 45000,
+    })
+    .then(() => console.log("✅ Connected to MongoDB"))
+    .catch((err) => console.error("❌ MongoDB connection error:", err));  
+};
 
-// Middleware to Check Database Connection Before Handling Requests
-app.use((req, res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    return res
-      .status(503)
-      .json({ success: false, message: "Database not connected" });
-  }
-  next();
-});
+connectWithRetry();
 
 // User Registration Route
 router.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
+
+  // Input Validation
+  if (!name || !email || !password) {
+    return res.status(400).json({
+      success: false,
+      message: "Please provide all required fields (name, email, password)",
+    });
+  }
 
   try {
     // Check if the user already exists
@@ -85,11 +71,20 @@ router.post("/register", async (req, res) => {
       message: "User successfully created",
     });
   } catch (error) {
-    console.error("❌ Error during user registration:", error.message); // Improved logging
+    console.error("❌ Error during user registration:", error.message);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        error: error.message,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message, // Sending specific error details
+      error: error.message,
     });
   }
 });
@@ -104,7 +99,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the Server
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
 });
