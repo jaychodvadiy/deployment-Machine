@@ -6,99 +6,97 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const router = express.Router();
-const app = express(); // Initialize the app
+const app = express();
 
-app.use(express.json()); // Middleware to parse JSON request body
-app.use(cors()); // Enable CORS
+app.use(express.json());
+app.use(cors());
 
-// MongoDB Connection with Retry Mechanism
 const connectWithRetry = () => {
-  console.log("Attempting to connect to MongoDB..."); // Debugging log
+  console.log("Attempting to connect to MongoDB...");
 
   mongoose
-    .connect(process.env.MONGO_URI, {
+    .connect("mongodb://127.0.0.1:27017/yourDatabaseName", {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000, // 5 seconds timeout
+      serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
     })
-    .then(() => console.log("✅ Connected to MongoDB"))
-    .catch((err) => console.error("❌ MongoDB connection error:", err));  
+    .then(() => console.log("✅ MongoDB connected successfully"))
+    .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+
+  module.exports = mongoose;
 };
 
 connectWithRetry();
 
 // User Registration Route
-router.post("/register", async (req, res) => {
+export const registerUser = async (req, res, next) => {
   const { name, email, password } = req.body;
 
-  // Input Validation
-  if (!name || !email || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "Please provide all required fields (name, email, password)",
-    });
-  }
-
   try {
-    // Check if the user already exists
-    const existingUser = await User.findOne({ email });
+    let user = await User.findOne({ email: email });
 
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists. Use a different email ID",
-      });
+    if (user) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "User already exists. Use diffrent mail Id",
+        });
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashpassword = await bcrypt.hash(password, salt);
 
-    // Create new user
-    const newUser = new User({
+    user = new User({
       name,
       email,
-      password: hashedPassword,
+      password: hashpassword,
     });
 
-    // Save the new user
-    await newUser.save();
-
-    // Send success response
-    return res.status(201).json({
-      success: true,
-      message: "User successfully created",
-    });
+    await user.save();
+    return res
+      .status(200)
+      .json({ success: true, message: "User successfully created" });
   } catch (error) {
-    console.error("❌ Error during user registration:", error.message);
-
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        message: "Validation error",
-        error: error.message,
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    console.log(error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong" });
   }
-});
+};
+// export const registerUser = async (req, res, next) => {
+//   const { name, email, password, phone } = req.body;
 
-// API Routes
+//   try {
+//       let user = await User.findOne({ email: email });
+
+//       if (user) {
+//           return res.status(400).json({ success: false, message: "User already exists. Use diffrent mail Id" })
+//       }
+
+//       const salt = await bcrypt.genSalt(10);
+//       const hashpassword = await bcrypt.hash(password, salt);
+
+//       user = new User({
+//           name, email, password: hashpassword, phone
+//       })
+
+//       await user.save()
+//       return res.status(200).json({ success: true, message: "User successfully created" })
+//   } catch (error) {
+//       console.log(error)
+//       return res.status(500).json({ success: false, message: "Something went wrong" })
+//   }
+// }
+
 app.use("/api/auth", router);
 
-// Global Error Handler (Catches Unhandled Errors)
 app.use((err, req, res, next) => {
   console.error("❗ Global Error Handler:", err.stack);
   res.status(500).json({ success: false, message: "Something went wrong" });
 });
 
-// Start the Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);

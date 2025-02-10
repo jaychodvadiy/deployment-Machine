@@ -5,102 +5,89 @@ const router = express.Router();
 const { body, validationResult } = require("express-validator");
 
 // POST /register - User registration
-router.post(
-  "/register",
-  [
-    body("name").notEmpty().withMessage("Name is required"),
-    body("email").isEmail().withMessage("Please provide a valid email"),
-    body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters long"),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
+router.post("/register", async (req, res) => {
+  const { name, email, password } = req.body;
+  console.log("Received Data:", req.body);
+
+  // Check for missing fields
+  if (!name || !email || !password) {
+    console.log("running!");
+
+    return res
+      .status(400)
+      .json({ success: false, message: "All fields are required" });
+  }
+
+  try {
+    let user = await User.findOne({ email });
+
+    if (user) {
       return res.status(400).json({
         success: false,
-        message: "Validation failed",
-        errors: errors.array(),
+        message: "User already exists. Use a different email ID",
       });
     }
 
-    const { name, email, password } = req.body;
-    try {
-      const existingUser = await User.findOne({ email });
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-      if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          message: "User already exists. Use a different email ID",
-        });
-      }
+    user = new User({
+      name,
+      email,
+      password: hashedPassword,
+    });
 
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      const newUser = new User({
-        name,
-        email,
-        password: hashedPassword,
-      });
-
-      await newUser.save();
-      return res.status(201).json({
-        success: true,
-        message: "User successfully created",
-      });
-    } catch (error) {
-      console.error("❌ Error during user registration:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      });
-    }
+    await user.save();
+    return res
+      .status(200)
+      .json({ success: true, message: "User successfully created" });
+  } catch (error) {
+    console.error("❌ Error during registration:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong" });
   }
-);
+});
 
 // POST route for login
 router.post("/login", async (req, res) => {
+  console.log("Login Request Received:", req.body); // Debugging
+
   const { email, password } = req.body;
 
-  // Check if email or password is empty
+  // Validate input fields
   if (!email || !password) {
     return res
       .status(400)
-      .json({ message: "Please provide both email and password" });
+      .json({ success: false, message: "All fields are required" });
   }
 
   try {
     // Find user by email
-    const user = await userModel.findOne({ email });
+    const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
-    // Compare the password with the hashed password stored in the database
+    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid credentials" });
     }
 
-    // If the password matches, generate a JWT token
-    const payload = {
-      userId: user._id,
-      email: user.email,
-    };
-
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    }); // Token expires in 1 hour
-
-    // Send response with token
-    res.status(200).json({ message: "Login successful", token });
+    return res
+      .status(200)
+      .json({ success: true, message: "Login successful", user });
   } catch (error) {
-    console.error("Error during login:", error);
-    res.status(500).json({ message: "Server error, please try again" });
+    console.error("❌ Login Error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal Server Error" });
   }
 });
 

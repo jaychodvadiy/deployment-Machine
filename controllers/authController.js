@@ -1,44 +1,44 @@
+const express = require("express");
+const bcrypt = require("bcrypt");
 const User = require("../models/User");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 
-exports.registerUser = async (req, res) => {
-  const { name, email, password } = req.body;
+const router = express.Router();
+
+// User Registration Route
+router.post("/register", async (req, res) => {
+  const { username, name, email, password, phone } = req.body;
+
+  // Check if all fields are provided
+  if (!username || !name || !email || !password || !phone) {
+    return res
+      .status(400)
+      .json({ success: false, message: "All fields are required" });
+  }
 
   try {
-    let user = await User.findOne({ email: email });
-
+    let user = await User.findOne({ email });
     if (user) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists. Use a different email ID",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "User already exists" });
     }
 
     const salt = await bcrypt.genSalt(10);
-    const hashpassword = await bcrypt.hash(password, salt);
+    const hashPassword = await bcrypt.hash(password, salt);
 
-    user = new User({
-      name,
-      email,
-      password: hashpassword,
-    });
-
+    user = new User({ username, name, email, password: hashPassword, phone });
     await user.save();
+
     return res
-      .status(200)
-      .json({ success: true, message: "User successfully created" });
+      .status(201)
+      .json({ success: true, message: "User registered successfully" });
   } catch (error) {
-    console.error("Error during registration:", error); // Log the error details
+    console.error("Error during registration:", error);
     return res
       .status(500)
-      .json({
-        success: false,
-        message: "Something went wrong",
-        error: error.message,
-      });
+      .json({ success: false, message: "Something went wrong" });
   }
-};
+});
 
 exports.login = async (req, res) => {
   try {
